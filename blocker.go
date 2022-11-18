@@ -2,13 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
-	"github.com/hyperledger/fabric/core/chaincode/shim"
-	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
-type SmartContract struct{}
+type ABstore struct {
+	contractapi.Contract
+}
 
 type Blocker_contract struct {
 	Hash       string `json:"hash"`
@@ -23,52 +25,48 @@ type Blocker_cancle_contract struct {
 	Date        string `json:"date"`
 }
 
-func (s *SmartContract) Init(APIstub shim.ChaincodeStubInterface) pb.Response {
-	return shim.Success(nil)
-}
-
-func (s *SmartContract) Invoke(APIstub shim.ChaincodeStubInterface) pb.Response {
-	function, args := APIstub.GetFunctionAndParameters()
-
-	if function == "setContract" {
-		return s.setContract(APIstub, args)
-	} else if function == "setCancleContract" {
-		return s.setCancleContract(APIstub, args)
-	} else if function == "func_verification" {
-		return s.setCancleContract(APIstub, args)
-	}
-	fmt.Println("Please check your function : " + function)
-	return shim.Error("Unknown function")
-}
-
-func (s *SmartContract) setContract(APIstub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *ABstore) setContract(ctx contractapi.TransactionContextInterface, input_hash string, contractor string, date string) error {
+	var err error
 	var b_contract = Blocker_contract{
-		Hash:       args[0],
-		Contractor: args[1],
-		Date:       args[2],
+		Hash:       input_hash,
+		Contractor: contractor,
+		Date:       date,
 	}
 	ctrAsByte, _ := json.Marshal(b_contract)
-	APIstub.PutState(args[0], ctrAsByte)
-	return shim.Success(nil)
+
+	err = ctx.GetStub().PutState(input_hash, ctrAsByte)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (s *SmartContract) setCancleContract(APIstub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (t *ABstore) setCancleContract(ctx contractapi.TransactionContextInterface, input_hash string, input_cancle_hash string, contractor string, date string) error {
+	var err error
 	var b_contract = Blocker_cancle_contract{
-		Hash:        args[0],
-		Cancle_Hash: args[1],
-		Contractor:  args[2],
-		Date:        args[3],
+		Hash:        input_hash,
+		Cancle_Hash: input_cancle_hash,
+		Contractor:  contractor,
+		Date:        date,
 	}
 	ctrAsByte, _ := json.Marshal(b_contract)
-	APIstub.PutState(args[1], ctrAsByte)
-	return shim.Success(nil)
+
+	err = ctx.GetStub().PutState(input_cancle_hash, ctrAsByte)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (s *SmartContract) func_verification(APIstub shim.ChaincodeStubInterface, target_hash string) pb.Response {
-	Avalbytes, err := APIstub.GetState(target_hash)
+func (t *ABstore) func_verification(ctx contractapi.TransactionContextInterface, target_hash string) (string, error) {
+	var err error
+	// Get the state from the ledger
+	Avalbytes, err := ctx.GetStub().GetState(target_hash)
 	if err != nil {
 		jsonResp := "{\"Error\":\"Failed to verification this contract(" + target_hash + ")\"}"
-		return shim.Error("Failed to create asset " + jsonResp)
+		return "", errors.New(jsonResp)
 	}
 
 	jsonResp := "{\"hash\":\"" + target_hash + "\",\"json\":\"" + string(Avalbytes) + "\"}"
@@ -77,8 +75,11 @@ func (s *SmartContract) func_verification(APIstub shim.ChaincodeStubInterface, t
 }
 
 func main() {
-	err := shim.Start(new(SmartContract))
+	cc, err := contractapi.NewChaincode(new(ABstore))
 	if err != nil {
-		fmt.Printf("Error starting Simple chaincode: %s", err)
+		panic(err.Error())
+	}
+	if err := cc.Start(); err != nil {
+		fmt.Printf("Error starting ABstore chaincode: %s", err)
 	}
 }
