@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,66 +13,75 @@ type ABstore struct {
 	contractapi.Contract
 }
 
-type Blocker_contract struct {
+type BlockerContract struct {
 	Hash       string `json:"hash"`
 	Contractor string `json:"contractor"`
 	Date       string `json:"date"`
 }
 
-type Blocker_cancle_contract struct {
+type BlockerCancleContract struct {
 	Hash        string `json:"hash"`
 	Cancle_Hash string `json:"cancle_hash"`
 	Contractor  string `json:"contractor"`
 	Date        string `json:"date"`
 }
 
-func (t *ABstore) setContract(ctx contractapi.TransactionContextInterface, input_hash string, contractor string, date string) error {
+func (t *ABstore) Init(ctx contractapi.TransactionContextInterface, input_hash string, contractor string, date string) error {
 	var err error
-	var b_contract = Blocker_contract{
+	var b_contract = BlockerContract{
 		Hash:       input_hash,
 		Contractor: contractor,
 		Date:       date,
 	}
 	ctrAsByte, _ := json.Marshal(b_contract)
-
 	err = ctx.GetStub().PutState(input_hash, ctrAsByte)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func (t *ABstore) setCancleContract(ctx contractapi.TransactionContextInterface, input_hash string, input_cancle_hash string, contractor string, date string) error {
+func (t *ABstore) Query(ctx contractapi.TransactionContextInterface, input_hash string) (string, error) {
 	var err error
-	var b_contract = Blocker_cancle_contract{
-		Hash:        input_hash,
-		Cancle_Hash: input_cancle_hash,
-		Contractor:  contractor,
-		Date:        date,
-	}
-	ctrAsByte, _ := json.Marshal(b_contract)
-
-	err = ctx.GetStub().PutState(input_cancle_hash, ctrAsByte)
+	Avalbytes, err := ctx.GetStub().GetState(input_hash)
 	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (t *ABstore) func_verification(ctx contractapi.TransactionContextInterface, target_hash string) (string, error) {
-	var err error
-	// Get the state from the ledger
-	Avalbytes, err := ctx.GetStub().GetState(target_hash)
-	if err != nil {
-		jsonResp := "{\"Error\":\"Failed to verification this contract(" + target_hash + ")\"}"
+		jsonResp := "{\"Error\":\"Failed to get state for " + input_hash + "\"}"
 		return "", errors.New(jsonResp)
 	}
+	b_contract := BlockerContract{}
+	json.Unmarshal(Avalbytes, &b_contract)
 
-	jsonResp := "{\"hash\":\"" + target_hash + "\",\"json\":\"" + string(Avalbytes) + "\"}"
+	var buffer bytes.Buffer
+	buffer.WriteString("[")
+	bArrayMemberAlreadyWritten := false
+
+	if bArrayMemberAlreadyWritten == true {
+		buffer.WriteString(",")
+	}
+
+	buffer.WriteString("{\"Hash\":")
+	buffer.WriteString("\"")
+	buffer.WriteString(b_contract.Hash)
+	buffer.WriteString("\"")
+
+	buffer.WriteString(", \"Contractor\":")
+	buffer.WriteString("\"")
+	buffer.WriteString(b_contract.Contractor)
+	buffer.WriteString("\"")
+
+	buffer.WriteString(", \"Date\":")
+	buffer.WriteString("\"")
+	buffer.WriteString(b_contract.Date)
+	buffer.WriteString("\"")
+
+	buffer.WriteString("}")
+	bArrayMemberAlreadyWritten = true
+	buffer.WriteString("]\n")
+
+	jsonResp := "{\"Hash\":\"" + input_hash + "\",\"contrat_infor\":\"" + string(Avalbytes) + "\"}"
 	fmt.Printf("Query Response:%s\n", jsonResp)
-	return string(Avalbytes), nil
+
+	return string(buffer.Bytes()), nil
 }
 
 func main() {
